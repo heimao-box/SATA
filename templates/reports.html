@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>{{ t('reports.title') }}</h2>
+  {% if items|length == 0 %}
+  <div class="empty">{{ t('reports.empty') }}</div>
+  {% else %}
+  <div class="list">
+    {% for r in items %}
+    <div class="item">
+      <div class="item-header">
+        <div class="rule">{{ r.name }}</div>
+        <div class="severity">{{ r.generated_at }}</div>
+      </div>
+      <div class="desc">{{ t('reports.events_count') }}: {{ r.events_count }}</div>
+      <div class="meta">{{ t('reports.upload_file') }}{{ t('reports.file_exists') if r.exists_in_uploads else t('reports.file_missing') }}</div>
+      {% if r.risk %}
+      <div class="meta">{{ t('common.verdict') }}: <span class="{{ r.verdict_class }}">{{ t('verdict.' + r.risk.verdict_code) }}</span>，{{ t('common.score') }} {{ r.risk.score }}/30</div>
+      {% else %}
+      <div class="meta">{{ t('reports.unable_evaluate') }}</div>
+      {% endif %}
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <a class="btn" href="{{ r.analyze_url }}">{{ t('reports.view_report') }}</a>
+        <a class="btn" href="{{ r.json_url }}">{{ t('reports.download_json') }}</a>
+        {% if r.flow_url %}
+        <a class="btn" href="{{ r.flow_url }}">{{ t('reports.view_flow') }}</a>
+        {% endif %}
+        <button class="btn danger" onclick="deleteReport('{{ r.name }}')">{{ t('reports.delete') }}</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+<script>
+async function deleteReport(name){
+  try{
+    if(!confirm('{{ t('reports.confirm_delete') }}')) return;
+    const res = await fetch('{{ url_for("reports_delete", name="__NAME__") }}'.replace('__NAME__', encodeURIComponent(name)), {method:'POST'});
+    const data = await res.json();
+    if(data.success){
+      const list = document.querySelector('.list');
+      const items = list ? list.querySelectorAll('.item') : [];
+      for(const el of items){
+        const title = el.querySelector('.item-header .rule');
+        if(title && title.textContent.trim() === name.trim()){
+          el.remove();
+          break;
+        }
+      }
+      if(list && list.querySelectorAll('.item').length === 0){
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = '{{ t('reports.empty') }}';
+        list.replaceChildren(empty);
+      }
+    }else{
+      alert('{{ t('reports.delete_failed') }}' + (data.error || (data.errors && data.errors[0]) || ''));
+    }
+  }catch(e){
+    alert('{{ t('reports.delete_failed') }}' + e);
+  }
+}
+</script>
+{% endblock %}

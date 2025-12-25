@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>{{ t('progress.title') }}</h2>
+  <p>{{ t('file.label') }}: <strong>{{ filename }}</strong></p>
+  <div class="progress-wrap" style="margin:12px 0">
+    <div class="progress-bar" style="height:12px;background:#e5e7eb;border-radius:999px;overflow:hidden">
+      <div id="bar" style="height:12px;width:0%;background:#3b82f6"></div>
+    </div>
+    <div id="percent" style="margin-top:8px;color:#111827">0%</div>
+  </div>
+  <div class="list">
+    <div class="item"><div class="item-header"><div class="rule">{{ t('progress.step_static') }}</div></div></div>
+    <div class="item"><div class="item-header"><div class="rule">{{ t('progress.step_dynamic_start') }}</div></div></div>
+    <div class="item"><div class="item-header"><div class="rule">{{ t('progress.step_collect') }}</div></div></div>
+    <div class="item"><div class="item-header"><div class="rule">{{ t('progress.step_report') }}</div></div></div>
+  </div>
+</section>
+<script>
+async function poll(){
+  try{
+    const res = await fetch('{{ url_for("progress_status", filename=filename) }}');
+    const data = await res.json();
+    document.getElementById('bar').style.width = data.percent + '%';
+    document.getElementById('percent').innerText = data.percent + '%';
+    if (data.status === 'complete' || data.percent >= 100){
+      window.location.href = '{{ url_for("analyze", filename=filename) }}';
+    } else {
+      setTimeout(poll, 1000);
+    }
+  }catch(e){
+    setTimeout(poll, 1500);
+  }
+}
+poll();
+</script>
+{% endblock %}

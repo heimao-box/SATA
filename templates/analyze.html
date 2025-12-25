@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>{{ t('analyze.result_title') }}: {{ filename }}</h2>
+  <div class="grid two">
+    <div>
+      <h3>{{ t('analyze.risk_score') }}</h3>
+      <table class="info-table">
+        <tr><td>{{ t('common.score') }}</td><td><strong>{{ risk.score }}</strong> / 30</td></tr>
+        <tr><td>{{ t('common.verdict') }}</td><td><span class="verdict {{ 'verdict-' + risk.verdict_code }}">{{ t('verdict.' + risk.verdict_code) }}</span></td></tr>
+        <tr><td>{{ t('analyze.static_points') }}</td><td>{{ risk.static_points }}</td></tr>
+        <tr><td>{{ t('analyze.dynamic_points') }}</td><td>{{ risk.dynamic_points }}</td></tr>
+      </table>
+      <a class="btn" href="{{ url_for('export_pdf', filename=filename) }}">{{ t('analyze.export_pdf') }}</a>
+      <h3>{{ t('analyze.file_info') }}</h3>
+      <table class="info-table">
+        <tr><td>{{ t('file.size') }}</td><td>{{ "{:,}".format(file_info.size) }} {{ t('file.bytes') }}</td></tr>
+        <tr><td>{{ t('file.type') }}</td><td>{{ file_info.file_type }}</td></tr>
+        <tr><td>{{ t('file.mime') }}</td><td>{{ file_info.mime_type }}</td></tr>
+        <tr><td>MD5</td><td><code>{{ file_info.md5 }}</code></td></tr>
+        <tr><td>SHA1</td><td><code>{{ file_info.sha1 }}</code></td></tr>
+        <tr><td>SHA256</td><td><code>{{ file_info.sha256 }}</code></td></tr>
+        <tr><td>{{ t('file.created_at') }}</td><td>{{ file_info.creation_time }}</td></tr>
+        <tr><td>{{ t('file.modified_at') }}</td><td>{{ file_info.modification_time }}</td></tr>
+        <tr><td>PE</td><td>{{ t('common.yes') if file_info.is_pe else t('common.no') }}</td></tr>
+      </table>
+      <a class="btn" href="{{ url_for('downloads', path=filename) }}">{{ t('file.download') }}</a>
+    </div>
+    <div>
+      <h3>{{ t('analyze.detections') }} ({{ scan_result.matches|length }})</h3>
+      {% if scan_result.matches|length == 0 %}
+      <div class="empty">{{ t('analyze.no_detection') }}</div>
+      {% else %}
+      <div class="tags">
+        {% for k,v in scan_result.categories.items() %}
+        <span class="tag">{{ k }} {{ v }}</span>
+        {% endfor %}
+      </div>
+      <div class="list">
+        {% for m in scan_result.matches %}
+        <div class="item severity-{{ m.severity }}">
+          <div class="item-header">
+            <div class="rule">{{ m.rule }}</div>
+            <div class="severity">{{ m.severity|upper }}</div>
+          </div>
+          <div class="desc">{{ m.description or t('analyze.suspicious_pattern_detected') }}</div>
+          <div class="meta">{{ t('analyze.rule') }}: {{ m.rule_file }} • {{ t('analyze.category') }}: {{ m.category }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h3>{{ t('dynamic.analysis') }}</h3>
+  <div class="status">
+    <span class="dot {{ 'on' if dynamic_running else 'off' }}"></span>
+    {{ t('status.running') if dynamic_running else t('status.stopped') }}
+    {% if dynamic_target.process_name %}
+    <span class="tag">{{ t('dynamic.target') }}: {{ dynamic_target.process_name }} (PID {{ dynamic_target.pid or t('common.unknown') }})</span>
+    {% endif %}
+    <a class="btn" href="{{ url_for('dynamic_export') }}">{{ t('dynamic.export_json') }}</a>
+  </div>
+  {% if dynamic_summary.count == 0 %}
+  <div class="empty">{{ t('dynamic.no_events') }}</div>
+  {% else %}
+  <div class="tags" style="margin-top:8px">
+    {% for k,v in dynamic_summary.by_type.items() %}
+    <span class="tag">{{ k }} {{ v }}</span>
+    {% endfor %}
+    {% for k,v in dynamic_summary.by_operation.items() %}
+    <span class="tag">{{ k }} {{ v }}</span>
+    {% endfor %}
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>{{ t('dynamic.flow') }}</h3>
+    <div class="flow-wrap">
+      <svg id="flow-svg" xmlns="http://www.w3.org/2000/svg" width="1000" height="400" style="background:#0b1220;"></svg>
+    </div>
+    <div id="flow-details" class="details-panel" style="display:none"></div>
+  </div>
+  <div class="list">
+    {% for e in dynamic_events %}
+    <div class="item">
+      <div class="item-header">
+        <div class="rule">{{ e.event_type }} • {{ e.operation }}</div>
+        <div class="severity">{{ e.timestamp }}</div>
+      </div>
+      <div class="desc">{{ e.path }}</div>
+      <div class="meta">{{ e.process_name }} (PID {{ e.process_id }})</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+<script>
+const events = {{ dynamic_events|tojson }};
+const svg = document.getElementById('flow-svg');
+const details = document.getElementById('flow-details');
+function buildFlow(evts){
+  const width = 1000, margin = 20, step = 50;
+  const height = Math.max(200, margin*2 + step*(evts.length+1));
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const colors = { Process:'#3b82f6', FileSystem:'#22c55e', Registry:'#f59e0b', Network:'#ef4444', Default:'#64748b' };
+  function colorFor(t){ return colors[t] || colors.Default; }
+  const title = document.createElementNS('http://www.w3.org/2000/svg','text');
+  title.setAttribute('x', width/2); title.setAttribute('y', margin+10);
+  title.setAttribute('fill','#e5e7eb'); title.setAttribute('font-size','16'); title.setAttribute('text-anchor','middle');
+  title.textContent = '{{ t('dynamic.flow') }}';
+  svg.appendChild(title);
+  let prevY = null;
+  evts.forEach((e, idx) => {
+    const x = 100, y = margin + 40 + step*idx, w = width-200, h = 30, fill = colorFor(e.event_type);
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
+    rect.setAttribute('rx', 8); rect.setAttribute('ry', 8);
+    rect.setAttribute('fill', fill); rect.setAttribute('opacity','0.25'); rect.setAttribute('stroke', fill);
+    rect.style.cursor = 'pointer';
+    rect.addEventListener('click', () => showDetails(e, rect));
+    svg.appendChild(rect);
+    const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x', x+10); label.setAttribute('y', y+20);
+    label.setAttribute('fill','#e5e7eb'); label.setAttribute('font-size','12');
+    label.textContent = `${e.event_type} • ${e.operation}`;
+    svg.appendChild(label);
+    const ts = document.createElementNS('http://www.w3.org/2000/svg','text');
+    ts.setAttribute('x', x+w-10); ts.setAttribute('y', y+20);
+    ts.setAttribute('fill','#9ca3af'); ts.setAttribute('font-size','12'); ts.setAttribute('text-anchor','end');
+    ts.textContent = e.timestamp || '';
+    svg.appendChild(ts);
+    const path = document.createElementNS('http://www.w3.org/2000/svg','text');
+    path.setAttribute('x', x+10); path.setAttribute('y', y+38);
+    path.setAttribute('fill','#9ca3af'); path.setAttribute('font-size','11');
+    path.textContent = e.path || '';
+    svg.appendChild(path);
+    if (prevY !== null){
+      const ax = width/2;
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', ax); line.setAttribute('y1', prevY+h); line.setAttribute('x2', ax); line.setAttribute('y2', y);
+      line.setAttribute('stroke','#475569'); line.setAttribute('stroke-width','2');
+      svg.appendChild(line);
+      const tri = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      tri.setAttribute('points', `${ax-5},${y} ${ax+5},${y} ${ax},${y-8}`); tri.setAttribute('fill','#475569');
+      svg.appendChild(tri);
+    }
+    prevY = y;
+  });
+}
+let lastSelectedRect = null;
+function showDetails(e, rect){
+  if (lastSelectedRect) lastSelectedRect.setAttribute('stroke-width','1');
+  lastSelectedRect = rect;
+  rect.setAttribute('stroke-width','3');
+  details.style.display = 'block';
+  const detailHtml = `
+    <div class="item selected">
+      <div class="item-header">
+        <div class="rule">${e.event_type} • ${e.operation}</div>
+        <div class="severity">${e.timestamp || ''}</div>
+      </div>
+      <div class="desc">${e.path || ''}</div>
+      <div class="meta">${e.process_name || ''} (PID ${e.process_id || ''})</div>
+      <pre style="white-space:pre-wrap;color:#9ca3af;margin-top:8px">${JSON.stringify(e.details || {}, null, 2)}</pre>
+    </div>`;
+  details.innerHTML = detailHtml;
+}
+buildFlow(events);
+</script>
+{% endblock %}
