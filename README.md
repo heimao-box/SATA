@@ -6,7 +6,7 @@
 ### Overview
 SATA is a Windows-focused security analysis platform that combines YARA-based static scanning with dynamic behavioral monitoring. It provides a clean SaaS-style UI, risk scoring, execution flow visualization, history reports, PDF export, and bilingual navigation.
 
-Note that it is best to run this platform in a virtual environment, as the platform will execute user uploaded programs for dynamic analysis
+Note that it is best to run this platform in a virtual environment, as the platform will execute user uploaded programs for dynamic analysis1!!!
 
 ### Features
 - Static analysis via YARA rules
